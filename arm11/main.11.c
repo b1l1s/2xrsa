@@ -7,9 +7,16 @@
 #define SPIDER_DATABSS_START 0x003C7000
 #define TEMP_ADR SPIDER_DATABSS_START
 
-extern const unsigned int arm9_main;
-extern const unsigned int arm9_main_end;
+extern const unsigned int arm9_stage1;
+extern const unsigned int arm9_stage1_end;
 
+// GPU stuffs
+int (*GX_SetTextureCopy)(void *input_buffer, void *output_buffer, uint32_t size, int in_x, int in_y, int out_x, int out_y, int flags) = (void*) 0x002c565c;
+int (*GSPGPU_FlushDataCache)(void *address, uint32_t length) = (void*) 0x00345ec8;
+
+uint32_t* gspHandle = (uint32_t*)0x003B9438;// 0x002AE03C
+
+// FS stuffs
 typedef struct {
 	s32 s;
 	u32 pos;
@@ -125,8 +132,8 @@ Result PS_VerifyRsaSha256(Handle *handle)
 	*(u32*)(TEMP_ADR+0x280) = bufSize<<3; //RSA bit-size, for the signature.
 
 	u32 *ptr = (u32*)(TEMP_ADR+0x380);
-	u32 *src = (u32*)arm9_main;
-	u32 size = arm9_main_end-arm9_main;
+	u32 *src = (u32*)arm9_stage1;
+	u32 size = arm9_stage1_end-arm9_stage1;
 	const u32 nopsled = 0;//0x100;
 	
 	for(int i=0; i<nopsled; i+=4)
@@ -209,12 +216,11 @@ int _main()
 {
 	svc_sleepThread(0x10000000);
 	
+	// Get framebuffer addresses
 	uint32_t regs[10];
 	
 	regs[0] = 0xDEADBABE;
 	regs[1] = 0xBABEDADA;
-	
-	uint32_t* gspHandle = (uint32_t*)0x003B9438;// 0x002AE03C
 	
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400468, &regs[0+2], 8); // framebuffer 1 top left & framebuffer 2 top left
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400494, &regs[2+2], 8); // framebuffer 1 top right & framebuffer 2 top right
@@ -222,11 +228,42 @@ int _main()
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400478, &regs[6+2], 4); // framebuffer select top
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400578, &regs[7+2], 4); // framebuffer select bottom
 	
-	for(int i = 0; i < 320 * 240 * 3 / 4; i++)
-	{
-		((uint32_t*)regs[4+2])[i] = 0xFFFFFFFF; // bottom 1
-		((uint32_t*)regs[4+3])[i] = 0xFFFFFFFF; // bottom 2
+	// Fills the bottom buffer with a random pattern
+	// Change this to the addresses read from gpu reg later
+	void *src = (void *)0x18000000;
+	for (int i = 0; i < 3; i++)
+	{  // Do it 3 times to be safe
+		GSPGPU_FlushDataCache(src, 0x00038400);
+		GX_SetTextureCopy(src, (void *)0x1F48F000, 0x00038400, 0, 0, 0, 0, 8);
+		svc_sleepThread(0x400000LL);
+		GSPGPU_FlushDataCache(src, 0x00038400);
+		GX_SetTextureCopy(src, (void *)0x1F4C7800, 0x00038400, 0, 0, 0, 0, 8);
+		svc_sleepThread(0x400000LL);
 	}
+	
+	// Read the main payload to top left framebuffer 1
+	const uint32_t chunk_size = 0x100;
+	uint8_t* buffer = (void*)0x18410000;
+	uint32_t payload_loc = regs[0+2] + 4;
+
+	IFILE file;
+	unsigned int readBytes;
+	_memset(&file, 0, sizeof(file));
+	IFile_Open(&file, L"dmc:/arm9.bin", 1);
+	
+	for (int i = 0; i < 0x10000; i += readBytes)
+	{
+		IFile_Read(&file, &readBytes, (void*)buffer, chunk_size);
+		GSPGPU_FlushDataCache(buffer, chunk_size);
+		GX_SetTextureCopy(buffer, (void *)(payload_loc + i), readBytes, 0, 0, 0, 0, 8);
+		
+		if (readBytes < chunk_size) break;
+	}
+	
+	// Copy the magic
+	*(uint32_t*) buffer = 0x4b435546;
+	GSPGPU_FlushDataCache(buffer, 4);
+	GX_SetTextureCopy(buffer, (void *)(regs[0+2]), 4, 0, 0, 0, 0, 8);
 	
 	Handle port;
 	svc_connectToPort(&port, "srv:pm");
