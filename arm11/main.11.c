@@ -7,9 +7,8 @@
 #define SPIDER_DATABSS_START 0x003C7000
 #define TEMP_ADR SPIDER_DATABSS_START
 
-// Temp defines
-const unsigned int arm9_main = SPIDER_DATARO_START;
-const unsigned int arm9_main_end = SPIDER_DATARO_START + 0x4000;
+extern const unsigned int arm9_main;
+extern const unsigned int arm9_main_end;
 
 typedef struct {
 	s32 s;
@@ -189,15 +188,45 @@ Result srv_getServiceHandle(Handle* handleptr, Handle* out, char* server)
 	return cmdbuf[1];
 }
 
+Result _GSPGPU_ReadHWRegs(uint32_t* handle, u32 regAddr, u32* data, u8 size)
+{
+	if(size>0x80 || !data) return -1;
+
+	u32* cmdbuf=getThreadCommandBuffer();
+	cmdbuf[0]=0x00040080; //request header code
+	cmdbuf[1]=regAddr;
+	cmdbuf[2]=size;
+	cmdbuf[0x40]=(size<<14)|2;
+	cmdbuf[0x40+1]=(u32)data;
+
+	Result ret=0;
+	if((ret=svc_sendSyncRequest(*handle)))return ret;
+
+	return cmdbuf[1];
+}
+
 int _main()
 {
 	svc_sleepThread(0x10000000);
 	
-	IFILE file;
-	unsigned int readBytes;
-	_memset(&file, 0, sizeof(file));
-	IFile_Open(&file, L"dmc:/arm9.bin", 1);
-	IFile_Read(&file, &readBytes, (void*)arm9_main, 0x4000);
+	uint32_t regs[10];
+	
+	regs[0] = 0xDEADBABE;
+	regs[1] = 0xBABEDADA;
+	
+	uint32_t* gspHandle = (uint32_t*)0x003B9438;// 0x002AE03C
+	
+	_GSPGPU_ReadHWRegs(gspHandle, 0x400468, &regs[0+2], 8); // framebuffer 1 top left & framebuffer 2 top left
+	_GSPGPU_ReadHWRegs(gspHandle, 0x400494, &regs[2+2], 8); // framebuffer 1 top right & framebuffer 2 top right
+	_GSPGPU_ReadHWRegs(gspHandle, 0x400568, &regs[4+2], 8); // framebuffer 1 bottom & framebuffer 2 bottom
+	_GSPGPU_ReadHWRegs(gspHandle, 0x400478, &regs[6+2], 4); // framebuffer select top
+	_GSPGPU_ReadHWRegs(gspHandle, 0x400578, &regs[7+2], 4); // framebuffer select bottom
+	
+	for(int i = 0; i < 320 * 240 * 3 / 4; i++)
+	{
+		((uint32_t*)regs[4+2])[i] = 0xFFFFFFFF; // bottom 1
+		((uint32_t*)regs[4+3])[i] = 0xFFFFFFFF; // bottom 2
+	}
 	
 	Handle port;
 	svc_connectToPort(&port, "srv:pm");
