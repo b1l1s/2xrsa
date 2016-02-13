@@ -244,7 +244,7 @@ int _main()
 	// Read the main payload to top left framebuffer 1
 	const uint32_t chunk_size = 0x100;
 	uint8_t* buffer = (void*)0x18410000;
-	uint32_t payload_loc = regs[0+2] + 4;
+	uint32_t payload_loc = regs[0+2] + 4 - 0x20000000 + 0x14000000;
 
 	IFILE file;
 	unsigned int readBytes;
@@ -263,7 +263,7 @@ int _main()
 	// Copy the magic
 	*(uint32_t*) buffer = 0x4b435546;
 	GSPGPU_FlushDataCache(buffer, 4);
-	GX_SetTextureCopy(buffer, (void *)(regs[0+2]), 4, 0, 0, 0, 0, 8);
+	GX_SetTextureCopy(buffer, (void *)(payload_loc - 4), 4, 0, 0, 0, 0, 8);
 	
 	Handle port;
 	svc_connectToPort(&port, "srv:pm");
