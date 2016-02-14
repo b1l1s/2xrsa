@@ -2,8 +2,9 @@ OUTPUT_ARCH(arm)
 ENTRY(_main)
 SECTIONS
 {
-	. = 0x00100000;
+	. = 0x00200000;
 	.text : {
+		*(.text.a11.entry)
 		*(.text)
 		arm9_stage1 = .;
 		*(.text.a9.entry)

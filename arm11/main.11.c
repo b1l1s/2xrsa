@@ -212,7 +212,7 @@ Result _GSPGPU_ReadHWRegs(uint32_t* handle, u32 regAddr, u32* data, u8 size)
 	return cmdbuf[1];
 }
 
-int _main()
+int __attribute__ ((section (".text.a11.entry"))) _main()
 {
 	svc_sleepThread(0x10000000);
 	
