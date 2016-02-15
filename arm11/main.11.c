@@ -26,6 +26,7 @@ typedef struct {
 
 int (*IFile_Open)(IFILE *f, const short *path, int flags) = (void*) 0x0025BC00;
 int (*IFile_Read)(IFILE *f, unsigned int *read, void *buffer, unsigned int size) = (void*) 0x002FA864;
+int (*IFile_Write)(IFILE *f, uint32_t *written, void *src, uint32_t size) = (void*) 0x00310190;
 
 void svc_sleepThread(s64 ns);
 s32 svc_connectToPort(Handle* out, const char* portName);
@@ -212,10 +213,36 @@ Result _GSPGPU_ReadHWRegs(uint32_t* handle, u32 regAddr, u32* data, u8 size)
 	return cmdbuf[1];
 }
 
+void flashScreen(void)
+{
+	// Fills the bottom buffer with a random pattern
+	// Change this to the addresses read from gpu reg later
+	void *src = (void *)0x18000000; // Random buffer location
+	for (int i = 0; i < 3; i++)
+	{  // Do it 3 times to be safe
+		GSPGPU_FlushDataCache(src, 0x00038400);
+		GX_SetTextureCopy(src, (void *)0x1F48F000, 0x00038400, 0, 0, 0, 0, 8);
+		svc_sleepThread(0x400000LL);
+		GSPGPU_FlushDataCache(src, 0x00038400);
+		GX_SetTextureCopy(src, (void *)0x1F4C7800, 0x00038400, 0, 0, 0, 0, 8);
+		svc_sleepThread(0x400000LL);
+	}
+}
+
+
 int __attribute__ ((section (".text.a11.entry"))) _main()
 {
 	svc_sleepThread(0x10000000);
 	
+	IFILE file2;
+	_memset(&file2, 0, sizeof(file2));
+
+	IFile_Open(&file2, L"dmc:/sentinel.bin", 6);
+
+	char c = 'd';
+	uint32_t writeBytes = 0;
+	IFile_Write(&file2, &writeBytes, &c, 1);
+
 	// Get framebuffer addresses
 	uint32_t regs[10];
 	
@@ -228,43 +255,19 @@ int __attribute__ ((section (".text.a11.entry"))) _main()
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400478, &regs[6+2], 4); // framebuffer select top
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400578, &regs[7+2], 4); // framebuffer select bottom
 	
-	// Fills the bottom buffer with a random pattern
-	// Change this to the addresses read from gpu reg later
-	void *src = (void *)0x18000000;
-	for (int i = 0; i < 3; i++)
-	{  // Do it 3 times to be safe
-		GSPGPU_FlushDataCache(src, 0x00038400);
-		GX_SetTextureCopy(src, (void *)0x1F48F000, 0x00038400, 0, 0, 0, 0, 8);
-		svc_sleepThread(0x400000LL);
-		GSPGPU_FlushDataCache(src, 0x00038400);
-		GX_SetTextureCopy(src, (void *)0x1F4C7800, 0x00038400, 0, 0, 0, 0, 8);
-		svc_sleepThread(0x400000LL);
-	}
-	
 	// Read the main payload to top left framebuffer 1
-	const uint32_t chunk_size = 0x100;
-	uint8_t* buffer = (void*)0x18410000;
+	uint8_t* buffer = (void*)(0x18410000 + 4);
 	uint32_t payload_loc = regs[0+2] + 4 - 0x20000000 + 0x14000000;
 
 	IFILE file;
 	unsigned int readBytes;
 	_memset(&file, 0, sizeof(file));
 	IFile_Open(&file, L"dmc:/arm9.bin", 1);
-	
-	for (int i = 0; i < 0x10000; i += readBytes)
-	{
-		IFile_Read(&file, &readBytes, (void*)buffer, chunk_size);
-		GSPGPU_FlushDataCache(buffer, chunk_size);
-		GX_SetTextureCopy(buffer, (void *)(payload_loc + i), readBytes, 0, 0, 0, 0, 8);
-		
-		if (readBytes < chunk_size) break;
-	}
-	
+	IFile_Read(&file, &readBytes, (void*)buffer, 0x10000);
+
 	// Copy the magic
-	*(uint32_t*) buffer = 0x4b435546;
-	GSPGPU_FlushDataCache(buffer, 4);
-	GX_SetTextureCopy(buffer, (void *)(payload_loc - 4), 4, 0, 0, 0, 0, 8);
-	
+	*(uint32_t*) (buffer -  4) = 0x4b435546;
+
 	Handle port;
 	svc_connectToPort(&port, "srv:pm");
 	
@@ -280,10 +283,14 @@ int __attribute__ ((section (".text.a11.entry"))) _main()
 	Handle ps_handle;
 	srv_getServiceHandle(&port, &ps_handle, "ps:ps");
 	
+	flashScreen();
+	svc_sleepThread(0x10000000);
+
 	svc_sleepThread(0x10000000);
 	
 	u32 res = PS_VerifyRsaSha256(&ps_handle);
 	
+	flashScreen();
 	svc_sleepThread(0x10000000);
 	
 	while(1);
