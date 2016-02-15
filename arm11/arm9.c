@@ -22,10 +22,46 @@ void __attribute__ ((section (".text.a9"))) xmemcpy(void* dst, const void* src, 
 	}
 }
 
+void __attribute__ ((section (".text.a9"), naked)) svcBackdoor(void* funcptr)
+{
+	asm volatile
+	(
+		"svc 0x7B\n\t"
+		"bx lr"
+	);
+}
+
+void __attribute__ ((section (".text.a9"))) mpuPerm()
+{
+	asm volatile
+	(
+		"ldr r0, =0x10000037\n\t"
+		"mcr p15, 0, r0, c6, c3, 0\n\t"	// Region 3, 0x10000000-0x20000000
+		
+		"mov r0, #0\n\t"
+		"mcr p15, 0, r0, c6, c4, 0\n\t"	// Region 4, disable
+		
+		"mcr p15, 0, r0, c6, c6, 0\n\t"	// Region 6, disable
+		"mcr p15, 0, r0, c6, c7, 0\n\t"	// Region 7, disable
+		:::"r0"
+	);
+}
 
 void __attribute__ ((section (".text.a9"))) core_main(void)
 {
 	uint32_t *cur = (uint32_t *)0x20000000;
+	
+	asm volatile
+	(
+		"adr r0, mpuPerm\n\t"
+		"bl svcBackdoor\n\t"
+		:::"r0"
+	);
+
+	for (int i = 0; i < 0x00038400; ++i) {
+			((uint8_t*)0x1848F000)[i] = 0x01;
+			((uint8_t*)0x184C7800)[i] = 0x01;
+	}
 
 	do {
 		/* "FUCK" */
@@ -47,4 +83,3 @@ void __attribute__ ((section (".text.a9"))) core_main(void)
 
 	((void (*)())0x23F00000)();
 }
-
