@@ -94,12 +94,7 @@ void __attribute__ ((section (".text.a9"))) core_main(void)
 		:::"r0"
 	);
 	
-	asm volatile
-	(
-		"adr r0, data_dump\n\t"
-		"bl svcBackdoor\n\t"
-		:::"r0"
-	);
+	data_dump();
 
 	do {
 		/* "FUCK" */
