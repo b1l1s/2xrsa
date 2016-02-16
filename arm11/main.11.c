@@ -274,8 +274,8 @@ int __attribute__ ((section (".text.a11.entry"))) _main()
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400578, &regs[7+2], 4); // framebuffer select bottom
 	
 	// Read the main payload to top left framebuffer 1
-	// use the first 4 bytes of BUFFER_ADR to hold magic
-	uint8_t* buffer = (BUFFER_ADR + 4);
+	// use the first 8 bytes of BUFFER_ADR to hold magic
+	uint8_t* buffer = (BUFFER_ADR + 20);
 
 	IFILE file;
 	unsigned int readBytes;
@@ -284,7 +284,24 @@ int __attribute__ ((section (".text.a11.entry"))) _main()
 	IFile_Read(&file, &readBytes, (void*)buffer, 0x10000);
 
 	// Copy the magic
-	*(uint32_t*) (buffer -  4) = 0x4b435546;
+	*(uint32_t*) (BUFFER_ADR + 0) = 0x4b435546;
+	*(uint32_t*) (BUFFER_ADR + 4) = 0x4b435546;
+	
+	if(regs[6+2])
+	{
+		*(uint32_t*) (BUFFER_ADR + 8) = regs[0+2];
+		*(uint32_t*) (BUFFER_ADR + 12) = regs[2+2];
+	}
+	else
+	{
+		*(uint32_t*) (BUFFER_ADR + 8) = regs[1+2];
+		*(uint32_t*) (BUFFER_ADR + 12) = regs[3+2];
+	}
+	
+	if(regs[7+2])
+		*(uint32_t*) (BUFFER_ADR + 16) = regs[4+2];
+	else
+		*(uint32_t*) (BUFFER_ADR + 16) = regs[5+2];
 
 	// Grab access to PS
 	Handle port;

@@ -50,6 +50,11 @@ void __attribute__ ((section (".text.a9"))) mpuPerm()
 		
 		"mcr p15, 0, r0, c6, c6, 0\n\t"	// Region 6, disable
 		"mcr p15, 0, r0, c6, c7, 0\n\t"	// Region 7, disable
+		
+		"mrc p15, 0, r0, c5, c0, 3\n\t"
+		"bic r0, r0, #0xF00000\n\t" // Region 5 protect
+		"orr r0, r0, #0x300000\n\t" // Region 5 r/w access
+		"mcr p15, 0, r0, c5, c0, 3\n\t"
 		:::"r0"
 	);
 }
@@ -80,7 +85,7 @@ void __attribute__ ((section (".text.a9"))) data_dump()
 	
 	xmemset(&file, 0, sizeof(file));
 	IFile_Open(&file, (const wchar_t*)tname, 6);
-	IFile_Write(&file, &written, (const uint32_t*)0x10012000, 0x00000100, 1);
+	IFile_Write(&file, &written, (const uint32_t*)0x23F00000, 0x10000, 1);
 }
 
 void __attribute__ ((section (".text.a9"))) core_main(void)
@@ -93,16 +98,16 @@ void __attribute__ ((section (".text.a9"))) core_main(void)
 		"bl svcBackdoor\n\t"
 		:::"r0"
 	);
-	
-	data_dump();
 
 	do {
 		/* "FUCK" */
-		if (*cur++ == 0x4b435546)
+		if (*cur++ == 0x4b435546 && *cur++ == 0x4b435546)
 			break;
 	} while ((uintptr_t)cur < (uintptr_t)0x28000000);
 
 	if ((uintptr_t)cur == (uintptr_t)0x28000000) {
+		data_dump();
+		
 		/* Not found, let's just hang ourselves. */
 		while(1)
 		for (int i = 0; i < 0x00038400; ++i) {
@@ -110,19 +115,14 @@ void __attribute__ ((section (".text.a9"))) core_main(void)
 			((uint8_t*)0x184C7800)[i] = 0x00;
 		}
 	}
-	
-	while(1)
-	for (int i = 0; i < 0x00038400; ++i) {
-		((uint8_t*)0x1848F000)[i] = 0xFF;
-		((uint8_t*)0x184C7800)[i] = 0xFF;
-	}
 
-	/* Due to the post-increment in the loop above, "cur" already points
-	 * at the right position.
-	 *
-	 * Size is completely arbitrary,
-	 */
-	xmemcpy((void*)0x23F00000, cur, 0x10000);
+	/* Size is completely arbitrary */
+	xmemcpy((void*)0x23F00000, cur + 3, 0x10000);
+	
+	// Find and assign the fb addresses
+	*((unsigned int*)0x23FFFE00) = cur[0];
+	*((unsigned int*)0x23FFFE04) = cur[1];
+	*((unsigned int*)0x23FFFE08) = cur[2];
 
 	((void (*)())0x23F00000)();
 }
