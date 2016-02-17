@@ -85,7 +85,7 @@ void __attribute__ ((section (".text.a9"))) data_dump()
 	
 	xmemset(&file, 0, sizeof(file));
 	IFile_Open(&file, (const wchar_t*)tname, 6);
-	IFile_Write(&file, &written, (const uint32_t*)0x23F00000, 0x10000, 1);
+	IFile_Write(&file, &written, (const uint32_t*)0x23F00000, 0x20000, 1);
 }
 
 void __attribute__ ((section (".text.a9"))) core_main(void)
@@ -117,12 +117,14 @@ void __attribute__ ((section (".text.a9"))) core_main(void)
 	}
 
 	/* Size is completely arbitrary */
-	xmemcpy((void*)0x23F00000, cur + 3, 0x10000);
-	
 	// Find and assign the fb addresses
 	*((unsigned int*)0x23FFFE00) = cur[0];
 	*((unsigned int*)0x23FFFE04) = cur[1];
 	*((unsigned int*)0x23FFFE08) = cur[2];
+	/*
+	*((unsigned int*)0x080FFFC0) = cur[0];
+	*((unsigned int*)0x080FFFD4) = cur[2];
+	*((unsigned int*)0x080FFFD8) = 0;*/
 
-	((void (*)())0x23F00000)();
+	svcBackdoor((void (*)())0x23F00000);
 }

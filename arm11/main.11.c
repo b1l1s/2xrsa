@@ -273,15 +273,28 @@ int __attribute__ ((section (".text.a11.entry"))) _main()
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400478, &regs[6+2], 4); // framebuffer select top
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400578, &regs[7+2], 4); // framebuffer select bottom
 	
+	//patch gsp event handler addr to kill gsp thread ASAP, PA 0xF67CF418
+	*((u32*)(0x003F8418+0x10+4*0x4))=0x002CA520; //svc 0x9 addr
+	flashScreen();
+	
 	// Read the main payload to top left framebuffer 1
 	// use the first 8 bytes of BUFFER_ADR to hold magic
-	uint8_t* buffer = (BUFFER_ADR + 20);
+	uint8_t* buffer = BUFFER_ADR;
 
 	IFILE file;
 	unsigned int readBytes;
 	_memset(&file, 0, sizeof(file));
 	IFile_Open(&file, L"dmc:/arm9.bin", 1);
-	IFile_Read(&file, &readBytes, (void*)buffer, 0x10000);
+	
+	const uint32_t block_size = 0x10000;
+	for(int i = 0; i < 0x20000; i += block_size)
+	{
+		IFile_Read(&file, &readBytes, (void*)buffer, block_size);
+		GSPGPU_FlushDataCache(buffer, block_size);
+		GX_SetTextureCopy(buffer, (void *)0x17F00000 + i, block_size, 0, 0, 0, 0, 8);
+		if(readBytes != block_size)
+			break;
+	}
 
 	// Copy the magic
 	*(uint32_t*) (BUFFER_ADR + 0) = 0x4b435546;
