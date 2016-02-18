@@ -273,12 +273,11 @@ int __attribute__ ((section (".text.a11.entry"))) _main()
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400478, &regs[6+2], 4); // framebuffer select top
 	_GSPGPU_ReadHWRegs(gspHandle, 0x400578, &regs[7+2], 4); // framebuffer select bottom
 	
-	//patch gsp event handler addr to kill gsp thread ASAP, PA 0xF67CF418
+	//patch gsp event handler addr to kill gsp thread ASAP, PA 0x267CF418
 	*((u32*)(0x003F8418+0x10+4*0x4))=0x002CA520; //svc 0x9 addr
 	flashScreen();
 	
-	// Read the main payload to top left framebuffer 1
-	// use the first 8 bytes of BUFFER_ADR to hold magic
+	// Read the main payload to 0x17F00000(0x23F00000 pa)
 	uint8_t* buffer = BUFFER_ADR;
 
 	IFILE file;
@@ -296,7 +295,7 @@ int __attribute__ ((section (".text.a11.entry"))) _main()
 			break;
 	}
 
-	// Copy the magic
+	// Copy the magic to 0x18410000
 	*(uint32_t*) (BUFFER_ADR + 0) = 0x4b435546;
 	*(uint32_t*) (BUFFER_ADR + 4) = 0x4b435546;
 	
