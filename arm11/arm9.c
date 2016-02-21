@@ -1,4 +1,8 @@
 #include <inttypes.h>
+#include "constants.h"
+#include "pointers.9.h"
+#include "IFile.9.h"
+#include "lib.9.h"
 
 void core_main(void);
 
@@ -18,24 +22,6 @@ void __attribute__ ((section (".text.a9"), naked)) svcSleepThread9(uint32_t nano
 		"svc 0x0A\n\t"
 		"bx lr"
 	);
-}
-
-/* Slow but safe, from CakesROPSpider */
-void __attribute__ ((section (".text.a9"))) xmemcpy(void* dst, const void* src, uint32_t size)
-{
-	char *destc = (char *) dst;
-	const char *srcc = (const char *) src;
-	for(uint32_t i = 0; i < size; i++)
-	{
-		destc[i] = srcc[i];
-	}
-}
-
-void __attribute__ ((section (".text.a9"))) xmemset(void* addr, int val, unsigned int size)
-{
-	char* caddr = (char*) addr;
-	while(size--)
-		*(caddr++) = val;
 }
 
 void __attribute__ ((section (".text.a9"), naked)) svcBackdoor(void* funcptr)
@@ -92,8 +78,7 @@ void __attribute__ ((section (".text.a9"))) flushCache()
 }
 
 void __attribute__ ((section (".text.a9"))) nop_sub()
-{
-}
+{}
 
 void __attribute__ ((section (".text.a9"))) disableInterrupts()
 {
@@ -123,35 +108,6 @@ void __attribute__ ((section (".text.a9"))) disableInterrupts()
 	flushCache();
 }
 
-typedef struct IFILE
-{
-	uint32_t unk[4];
-	uint64_t fptr;
-	uint64_t size;
-} IFILE;
-
-void __attribute__ ((section (".text.a9"))) data_dump()
-{
-	int(*IFile_Open)(IFILE* file, const wchar_t* path, uint32_t flags) = (void*)0x08065AA5;
-	void(*IFile_Write)(IFILE* file, uint32_t* written, const void* buffer, uint32_t size, uint32_t blockSize) = (void*)0x08068719;
-	
-	uint32_t tname[7];
-	tname[0] = 0x00640073;
-	tname[1] = 0x0063006D;
-	tname[2] = 0x002F003A;
-	tname[3] = 0x00390061;
-	tname[4] = 0x002E0066;
-	tname[5] = 0x00690062;
-	tname[6] = 0x0000006E;
-	
-	IFILE file;
-	uint32_t written;
-	
-	xmemset(&file, 0, sizeof(file));
-	IFile_Open(&file, (const wchar_t*)tname, 6);
-	IFile_Write(&file, &written, (const uint32_t*)0x23F00000, 0x20000, 1);
-}
-
 void __attribute__ ((section (".text.a9"))) jump(void)
 {
 	disableInterrupts();
@@ -166,12 +122,16 @@ void __attribute__ ((section (".text.a9"))) core_main(void)
 		"bl svcBackdoor\n\t"
 		:::"r0"
 	);
+	
+	// Mutex, ensure only one ARM9 thread executes this function
+	// just in case this is needed.
 	uint32_t* single = (uint32_t*)0x23FFFE0C;
 	if(*single == 0xAABBCCDD)
 		while(1)
 			svcSleepThread9(0x1DCD6500, 0);
 	*single = 0xAABBCCDD;
 	
+
 	uint32_t *cur = (uint32_t *)0x20000000;
 	
 	asm volatile
@@ -182,13 +142,12 @@ void __attribute__ ((section (".text.a9"))) core_main(void)
 	);
 
 	do {
-		/* "FUCK" */
-		if (*cur++ == 0x4b435546 && *cur++ == 0x4b435546)
+		/* "FUCKFUCK" */
+		if (*cur++ == MAGIC_WORD && *cur++ == MAGIC_WORD)
 			break;
 	} while ((uintptr_t)cur < (uintptr_t)0x28000000);
 
 	if ((uintptr_t)cur == (uintptr_t)0x28000000) {
-		data_dump();
 		
 		/* Not found, let's just hang ourselves. */
 		while(1)
@@ -198,8 +157,6 @@ void __attribute__ ((section (".text.a9"))) core_main(void)
 		}
 	}
 	
-	//svcSleepThread9(0x1DCD6500, 0);
-
 	/* Size is completely arbitrary */
 	// Find and assign the fb addresses
 	*((unsigned int*)0x23FFFE00) = cur[0];

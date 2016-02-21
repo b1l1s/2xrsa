@@ -1,0 +1,7 @@
+#ifndef CONSTANTS_11_H_
+#define CONSTANTS_11_H_
+
+#define MAGIC_WORD 0x4b435546
+
+#endif//CONSTANTS_11_H_
+
